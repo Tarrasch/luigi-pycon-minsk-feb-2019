@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/black.css">
+
+		<!-- Theme used for syntax highlighting of code -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+
+				<section data-markdown>
+## Data plumbing with Luigi
+
+Saturday, February 16, 2019
+
+PyCon Belarus 2019
+				</section>
+
+
+
+				<section data-markdown>
+### A little about me
+
+ * I'm the Chief Maintiner of [Luigi](https://github.com/spotify/luigi).
+
+ * Currently working at Google in Zurich. (there is nothing about that in these slides)
+
+ * Arash Rouhani. [@Tarrasch](https://github.com/Tarrasch) on github.
+				</section>
+
+
+				<section data-markdown>
+### This talk
+
+ 1. Introduction to luigi
+ 2. Creating folders - why it's not trivial
+ 3. How Luigi schedules tasks
+				</section>
+
+
+				<section data-markdown>
+# Introduction to luigi
+				</section>
+
+				<section data-markdown>
+### What is luigi?
+
+[github.com/Spotify/luigi](https://github.com/Spotify/luigi)
+
+![Luigi logo](img/luigi.png "luigi logo")
+
+A task orchestrator made in house at Spotify.
+
+Open sourced late 2012.
+				</section>
+
+				<section data-markdown>
+#### even has spinoffs: luiti, mario, sciluigi
+
+![Luiti logo](img/luiti_rectangle_logo.png)
+
+![Mario logo](img/mario.png)
+
+![SciLuigi logo](img/sciluigi.png)
+
+				</section>
+
+				<section data-markdown>
+## A dependency graph
+
+![Mario logo](img/dependency_graph.png)
+				</section>
+
+				<section data-markdown>
+## Task DSL
+
+It is very much like GNU Make.
+
+```python
+class MyTask(luigi.Task):
+    some_parameter = luigi.Parameter(default="hello")
+
+    def complete(self):
+        return True or False
+
+    def requires(self):
+        return [TaskA(), TaskB(param='yay')]
+
+    def run(self):
+        print(self.some_parameter, 'world')
+```
+
+				</section>
+
+				<section data-markdown>
+## Small example
+
+```python
+import luigi
+
+class HelloWorldTask(luigi.Task):
+    def run(self):
+        with self.output().open('w') as fd:
+            fd.write('Hello World')
+
+    def output(self):
+        return luigi.LocalTarget('hello.txt')
+```
+
+(default `complete()` checks for file `output()`)
+
+				</section>
+
+				<section data-markdown>
+## Lets run it!
+
+```bash
+$ luigi --module helloworld HelloWorldTask --local-scheduler
+...
+INFO: Scheduled HelloWorldTask() (PENDING)
+...
+INFO:
+===== Luigi Execution Summary =====
+
+Scheduled 1 tasks of which:
+* 1 ran successfully:
+    - 1 HelloWorldTask()
+
+===== Luigi Execution Summary =====
+
+$ cat hello.txt
+Hello World
+```
+				</section>
+
+				<section data-markdown>
+## And lets run it again!
+
+```bash
+$ luigi --module helloworld HelloWorldTask --local-scheduler
+...
+INFO: Scheduled HelloWorldTask() (DONE)
+...
+INFO:
+===== Luigi Execution Summary =====
+
+Scheduled 1 tasks of which:
+* 1 present dependencies were encountered:
+    - 1 HelloWorldTask()
+
+Did not run any tasks
+
+===== Luigi Execution Summary =====
+```
+</section>
+
+				<section>Slide 1</section>
+				<section>Slide 2</section>
+			</div>
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+			// More info about config & dependencies:
+			// - https://github.com/hakimel/reveal.js#configuration
+			// - https://github.com/hakimel/reveal.js#dependencies
+			Reveal.initialize({
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				]
+			});
+		</script>
+	</body>
+</html>
