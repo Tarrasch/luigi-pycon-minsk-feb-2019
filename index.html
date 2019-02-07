@@ -30,7 +30,7 @@
 
 Saturday, February 16, 2019
 
-PyCon Belarus 2019
+![Pycon Belarus logo](img/logo_pycon_color.png)
 				</section>
 
 
@@ -68,7 +68,7 @@ PyCon Belarus 2019
 
 A task orchestrator made in house at Spotify.
 
-Open sourced late 2012.
+Open sourced in 2012.
 				</section>
 
 				<section data-markdown>
@@ -136,7 +136,6 @@ $ luigi --module helloworld HelloWorldTask --local-scheduler
 ...
 INFO: Scheduled HelloWorldTask() (PENDING)
 ...
-INFO:
 ===== Luigi Execution Summary =====
 
 Scheduled 1 tasks of which:
@@ -151,7 +150,7 @@ Hello World
 				</section>
 
 				<section data-markdown>
-## And lets run it again!
+## And let's run it again!
 
 ```bash
 $ luigi --module helloworld HelloWorldTask --local-scheduler
@@ -171,6 +170,129 @@ Did not run any tasks
 ```
 </section>
 
+
+<section>
+    <h2> Luigi does ETL well </h2>
+<img alt='Etl Pipeline' src="img/etl.svg" width=80%>
+</section>
+
+
+<section data-markdown>
+## Example pipeline
+ * Extract: `wget` some file from internet to storage
+ * Extract: dump table `X` from database to storage
+ * Transform: process using say Apache Spark 
+ * Transform: use legacy tool `Y` for refinement
+ * Load: Upload to database **Z**.
+
+Then we can serve webpages/music recommendations/whatever using **Z**.
+</section>
+
+<section data-markdown>
+## Let's focus on the Transform
+ * -
+ * -
+ * Transform: process using say Apache Spark 
+ * -
+ * -
+
+(I'm shifting to my second part of the talk now)
+
+</section>
+
+<section data-markdown>
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        # ... do something that produces the output ...
+
+class ConsumerTask(luigi.Task):
+    def requires(self):
+        return ProtucerTask()
+
+    def run(self):
+        # ... use self.output() (the HdfsTarget above.)
+```
+</section>
+
+<section>
+<h2>So contract is like this...</h2>
+
+<img alt='Producer Consumer' src='img/producer-consumer.png' width=60%><br>
+
+Consumer can start once the producer's file is there!
+</section>
+
+<section data-markdown>
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        runcmd('/bin/spark MyTransformation '
+               '--input {} --output {}'.format(
+                   self.get_input_somehow(),
+                   self.output().path)
+```
+
+What will go wrong here?
+</section>
+
+<section data-markdown>
+## Input won't be done.
+
+This is a big problem. The consumer will see that the input is already
+produced and start consuming the input while it is still being streamed.
+
+One solution would be to extend the luigi scheduler to handle this, but we want
+to keep the server part dead simple.
+</section>
+
+<section data-markdown>
+## The community's first solution:
+```bash
+$ ag luigi-tmp
+luigi/contrib/hadoop_jar.py
+49:                y = luigi.contrib.hdfs.HdfsTarget(x_path_no_slash + '-luigi-tmp-%09d' % random.randrange(0, 1e10))
+
+luigi/contrib/ftp.py
+169:            tmp_path = folder + os.sep + 'luigi-tmp-%09d' % random.randrange(0, 1e10)
+187:        tmp_local_path = local_path + '-luigi-tmp-%09d' % random.randrange(0, 1e10)
+261:            self.__tmp_path = self.path + '-luigi-tmp-%09d' % random.randrange(0, 1e10)
+
+(also luigi/contrib/ssh.py and luigi/file.py)
+```
+
+Every file format made their own solution :(
+</section>
+
+
+<section data-markdown>
+## So my "invention"
+
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        with self.output().temporary_path() as output_path:
+            runcmd('/bin/spark MyTransformation '
+                   '--input {} --output {}'.format(
+                       self.get_input_somehow(),
+                       output_path)
+```
+
+</section>
+
+
+
+
+
 				<section>Slide 1</section>
 				<section>Slide 2</section>
 			</div>
@@ -189,7 +311,9 @@ Did not run any tasks
 					{ src: 'plugin/markdown/markdown.js' },
 					{ src: 'plugin/notes/notes.js', async: true },
 					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
-				]
+				],
+				history: true,
+				fragmentInURL: true
 			});
 		</script>
 	</body>
