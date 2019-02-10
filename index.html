@@ -51,7 +51,7 @@ Saturday, February 16, 2019
 
  1. Introduction to luigi
  2. Creating folders - why it's not trivial
- 3. How Luigi schedules tasks
+ 3. An interesting ContextManager that solves 2.
 				</section>
 
 
@@ -185,6 +185,12 @@ Did not run any tasks
  * Transform: use legacy tool `Y` for refinement
  * Load: Upload to database **Z**.
 
+Every bullet point is alike a
+
+```python
+class MyTask(luigi.Task): ...
+```
+
 Then we can serve webpages/music recommendations/whatever using **Z**.
 </section>
 
@@ -201,6 +207,17 @@ Then we can serve webpages/music recommendations/whatever using **Z**.
 </section>
 
 <section data-markdown>
+## Part 2. Creating a folder
+
+With the luigi model, one just doesn't create a folder.
+
+...
+
+And here's why :)
+</section>
+
+<section data-markdown>
+## A common `Task` dependency
 ```python
 class ProducerTask(luigi.Task):
     def output(self):
@@ -223,7 +240,7 @@ class ConsumerTask(luigi.Task):
 
 <img alt='Producer Consumer' src='img/producer-consumer.png' width=60%><br>
 
-Consumer can start once the producer's file is there!
+Consumer will start once the producer's file is there!
 </section>
 
 <section data-markdown>
@@ -243,14 +260,24 @@ What will go wrong here?
 </section>
 
 <section data-markdown>
-## Input won't be done.
+### Input will exist before it's ready.
 
 This is a big problem. The consumer will see that the input is already
-produced and start consuming the input while it is still being streamed.
+produced and start consuming the input while it is still being written.
 
 One solution would be to extend the luigi scheduler to handle this, but we want
-to keep the server part dead simple.
+to keep the server part simple.
 </section>
+
+<section data-markdown>
+### So we want temporary files/folders
+
+Our need to write "all at once" is implemented by writing to temporary path,
+and only if it was successful we write it to the final path.
+
+Actually the luigi community did this for ages:
+</section>
+
 
 <section data-markdown>
 ## The community's first solution:
@@ -266,8 +293,12 @@ luigi/contrib/ftp.py
 
 (also luigi/contrib/ssh.py and luigi/file.py)
 ```
+</section>
+<section data-markdown>
+## Downsides
 
-Every file format made their own solution :(
+ * Every file format made their own implementation.
+ * And they take different parameters.
 </section>
 
 
@@ -289,12 +320,114 @@ class ProducerTask(luigi.Task):
 
 </section>
 
+<section data-markdown>
+## Does it work?
 
+ * I (at prev company) and others use it in production.
+ * It works for filsystems (local, gfs, hdfs, ssh, etc).
+ * The knowledge of moving files is encoded in the `FileSystem` interface rather
+   than folks maintaining `SparkTask`/`BigQueryTask`/etc.
+</section>
 
+<section data-markdown>
+## Part 3. How is is implemented?
 
+ * This is PyCon, so let's look at the implementation!
+</section>
 
-				<section>Slide 1</section>
-				<section>Slide 2</section>
+<section data-markdown>
+```python
+class FileSystemTarget(Target):
+  ...
+  def temporary_path(self):
+    class _Manager(object):
+      def __init__(self):
+        ...
+
+      def __enter__(self):
+        ...
+
+      def __exit__(self, exc_type, exc_value, traceback):
+        ...
+
+    return _Manager()
+```
+</section>
+
+<section data-markdown>
+```python
+class _Manager(object):
+  def __init__(self):
+    num = random.randrange(0, 1e10)
+    slashless_path = self.target.path.rstrip('/')
+                                     .rstrip("\\")
+    self._temp_path = '{}-luigi-tmp-{:010}{}'.format(
+        slashless_path,
+        num,
+        self.target._trailing_slash())
+    tmp_dir = os.path.dirname(slashless_path)
+    if tmp_dir:
+        self.target.fs.mkdir(tmp_dir, parents=True,
+                             raise_if_exists=False)
+
+```
+</section>
+
+<section data-markdown>
+`__enter__` is easy. :)
+
+```python
+class _Manager(object):
+  def __enter__(self):
+      return self._temp_path
+```
+</section>
+
+<section data-markdown>
+```python
+class _Manager(object):
+  target = self
+
+  # This is the default signature for __exit__()
+  def __exit__(self, exc_type, exc_value, traceback):
+    if exc_type is None:
+        # There were no exceptions
+        self.target.fs.rename_dont_move(self._temp_path,
+                                        self.target.path)
+    return False  # means we don't suppress the exception
+```
+
+Here is the interesting part, because our behavior is opposite of most context
+mangers. We do an action when there are no exceptions.
+</section>
+
+<section data-markdown>
+refresher on `@contextmanager`
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def managed_resource(*args, **kwds):
+    # Code to acquire resource, e.g.:
+    resource = acquire_resource(*args, **kwds)
+    try:
+        yield resource
+    finally:
+        # Code to release resource, e.g.:
+        release_resource(resource)
+
+>>> with managed_resource(timeout=3600) as resource:
+...     # Resource is released at the end of this block ..
+```
+</section>
+
+<section data-markdown>
+# Questions?
+
+Also I'm curious if anyone seen similar usage of context managers (do X if
+block didn't fail), of if you can reimplement it using `@contextmanager`
+</section>
+
 			</div>
 		</div>
 
