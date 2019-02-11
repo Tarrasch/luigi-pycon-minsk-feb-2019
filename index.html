@@ -228,7 +228,7 @@ class ProducerTask(luigi.Task):
 
 class ConsumerTask(luigi.Task):
     def requires(self):
-        return ProtucerTask()
+        return ProducerTask()
 
     def run(self):
         # ... use self.output() (the HdfsTarget above.)
@@ -274,13 +274,32 @@ to keep the server part simple.
 
 Our need to write "all at once" is implemented by writing to temporary path,
 and only if it was successful we write it to the final path.
+</section>
 
-Actually the luigi community did this for ages:
+<section data-markdown>
+### How it can look like
+
+```python
+class ProducerTask(luigi.Task):
+    def run(self):
+        tmp_path = self.output().path + '.tmp'
+        runcmd('/bin/spark MyTransformation '
+               '--input {} --output {}'.format(
+                   self.get_input_somehow(),
+                   tmp_path)
+        filesystem.move(tmp_path, self.output().path)
+```
+
+`tmp_path` can be either single file or a folder.
+
 </section>
 
 
 <section data-markdown>
-## The community's first solution:
+### The community's first solution:
+
+This has to be done for all task types. So this is what the community did.
+
 ```bash
 $ ag luigi-tmp
 luigi/contrib/hadoop_jar.py
@@ -293,7 +312,10 @@ luigi/contrib/ftp.py
 
 (also luigi/contrib/ssh.py and luigi/file.py)
 ```
+
+And maybe even places where we forgot.
 </section>
+
 <section data-markdown>
 ## Downsides
 
@@ -330,9 +352,10 @@ class ProducerTask(luigi.Task):
 </section>
 
 <section data-markdown>
-## Part 3. How is is implemented?
+## Part 3. How is it implemented?
 
  * This is PyCon, so let's look at the implementation!
+ * I'll show my first attempt. Which was bad Python.
 </section>
 
 <section data-markdown>
@@ -352,6 +375,11 @@ class FileSystemTarget(Target):
 
     return _Manager()
 ```
+
+So `__enter__()` and `__exit__()` is what makes it a context manager (the `with` statement).
+It's from the the docs; [3.3.9. `With` Statement Context
+Managers](https://docs.python.org/3/reference/datamodel.html#with-statement-context-managers)
+
 </section>
 
 <section data-markdown>
@@ -422,10 +450,45 @@ def managed_resource(*args, **kwds):
 </section>
 
 <section data-markdown>
-# Questions?
+### Can we use a `@contextmanager`?
 
-Also I'm curious if anyone seen similar usage of context managers (do X if
-block didn't fail), of if you can reimplement it using `@contextmanager`
+ * Yes we can. (next slide)
+ * Initially I could not "pattern match" what I wanted into the
+  @contextmanager. I din't see how it would support "do X if block didn't fail".
+</section>
+
+<section data-markdown>
+greatly simplified implementation.
+```python
+@contextmanager
+def temporary_path(self):
+    num = random.randrange(0, 1e10)
+    slashless_path = self.path.rstrip('/').rstrip("\\")
+    _temp_path = '{}-luigi-tmp-{:010}{}'.format(...)
+    tmp_dir = os.path.dirname(slashless_path)
+    if tmp_dir:
+        self.fs.mkdir(tmp_dir, parents=True,
+                      raise_if_exists=False)
+
+    yield _temp_path
+    # We won't reach here if there was an user exception.
+    self.fs.rename_dont_move(_temp_path, self.path)
+
+```
+</section>
+
+<section data-markdown>
+## What I learned
+
+ * implementation isn't a big deal. API is.
+ * unit tests your API not the internals.
+ * Do code reviews!!!
+ * contextmanagers aren't trivial. The library is good.
+</section>
+
+
+<section data-markdown>
+# Questions?
 </section>
 
 			</div>
