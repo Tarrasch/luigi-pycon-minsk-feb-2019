@@ -1,0 +1,516 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>reveal.js</title>
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/black.css">
+
+		<!-- Theme used for syntax highlighting of code -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+
+				<section data-markdown>
+## Data plumbing with Luigi
+
+Saturday, February 16, 2019
+
+![Pycon Belarus logo](img/logo_pycon_color.png)
+				</section>
+
+
+
+				<section data-markdown>
+### A little about me
+
+ * I'm the Chief Maintiner of [Luigi](https://github.com/spotify/luigi).
+
+ * Currently working at Google in Zurich. (there is nothing about that in these slides)
+
+ * Arash Rouhani. [@Tarrasch](https://github.com/Tarrasch) on github.
+				</section>
+
+
+				<section data-markdown>
+### This talk
+
+ 1. Introduction to luigi
+ 2. Creating folders - why it's not trivial
+ 3. An interesting ContextManager that solves 2.
+				</section>
+
+
+				<section data-markdown>
+# Introduction to luigi
+				</section>
+
+				<section data-markdown>
+### What is luigi?
+
+[github.com/Spotify/luigi](https://github.com/Spotify/luigi)
+
+![Luigi logo](img/luigi.png "luigi logo")
+
+A task orchestrator made in house at Spotify.
+
+Open sourced in 2012.
+				</section>
+
+				<section data-markdown>
+#### even has spinoffs: luiti, mario, sciluigi
+
+![Luiti logo](img/luiti_rectangle_logo.png)
+
+![Mario logo](img/mario.png)
+
+![SciLuigi logo](img/sciluigi.png)
+
+				</section>
+
+				<section data-markdown>
+## A dependency graph
+
+![Mario logo](img/dependency_graph.png)
+				</section>
+
+				<section data-markdown>
+## Task DSL
+
+It is very much like GNU Make.
+
+```python
+class MyTask(luigi.Task):
+    some_parameter = luigi.Parameter(default="hello")
+
+    def complete(self):
+        return True or False
+
+    def requires(self):
+        return [TaskA(), TaskB(param='yay')]
+
+    def run(self):
+        print(self.some_parameter, 'world')
+```
+
+				</section>
+
+				<section data-markdown>
+## Small example
+
+```python
+import luigi
+
+class HelloWorldTask(luigi.Task):
+    def run(self):
+        with self.output().open('w') as fd:
+            fd.write('Hello World')
+
+    def output(self):
+        return luigi.LocalTarget('hello.txt')
+```
+
+(default `complete()` checks for file `output()`)
+
+				</section>
+
+				<section data-markdown>
+## Lets run it!
+
+```bash
+$ luigi --module helloworld HelloWorldTask --local-scheduler
+...
+INFO: Scheduled HelloWorldTask() (PENDING)
+...
+===== Luigi Execution Summary =====
+
+Scheduled 1 tasks of which:
+* 1 ran successfully:
+    - 1 HelloWorldTask()
+
+===== Luigi Execution Summary =====
+
+$ cat hello.txt
+Hello World
+```
+				</section>
+
+				<section data-markdown>
+## And let's run it again!
+
+```bash
+$ luigi --module helloworld HelloWorldTask --local-scheduler
+...
+INFO: Scheduled HelloWorldTask() (DONE)
+...
+INFO:
+===== Luigi Execution Summary =====
+
+Scheduled 1 tasks of which:
+* 1 present dependencies were encountered:
+    - 1 HelloWorldTask()
+
+Did not run any tasks
+
+===== Luigi Execution Summary =====
+```
+</section>
+
+
+<section>
+    <h2> Luigi does ETL well </h2>
+<img alt='Etl Pipeline' src="img/etl.svg" width=80%>
+</section>
+
+
+<section data-markdown>
+## Example pipeline
+ * Extract: `wget` some file from internet to storage
+ * Extract: dump table `X` from database to storage
+ * Transform: process using say Apache Spark 
+ * Transform: use legacy tool `Y` for refinement
+ * Load: Upload to database **Z**.
+
+Every bullet point is alike a
+
+```python
+class MyTask(luigi.Task): ...
+```
+
+Then we can serve webpages/music recommendations/whatever using **Z**.
+</section>
+
+<section data-markdown>
+## Let's focus on the Transform
+ * -
+ * -
+ * Transform: process using say Apache Spark 
+ * -
+ * -
+
+(I'm shifting to my second part of the talk now)
+
+</section>
+
+<section data-markdown>
+## Part 2. Creating a folder
+
+With the luigi model, one just doesn't create a folder.
+
+...
+
+And here's why :)
+</section>
+
+<section data-markdown>
+## A common `Task` dependency
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        # ... do something that produces the output ...
+
+class ConsumerTask(luigi.Task):
+    def requires(self):
+        return ProducerTask()
+
+    def run(self):
+        # ... use self.output() (the HdfsTarget above.)
+```
+</section>
+
+<section>
+<h2>So contract is like this...</h2>
+
+<img alt='Producer Consumer' src='img/producer-consumer.png' width=60%><br>
+
+Consumer will start once the producer's file is there!
+</section>
+
+<section data-markdown>
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        runcmd('/bin/spark MyTransformation '
+               '--input {} --output {}'.format(
+                   self.get_input_somehow(),
+                   self.output().path)
+```
+
+What will go wrong here?
+</section>
+
+<section data-markdown>
+### Input will exist before it's ready.
+
+This is a big problem. The consumer will see that the input is already
+produced and start consuming the input while it is still being written.
+
+One solution would be to extend the luigi scheduler to handle this, but we want
+to keep the server part simple.
+</section>
+
+<section data-markdown>
+### So we want temporary files/folders
+
+Our need to write "all at once" is implemented by writing to temporary path,
+and only if it was successful we write it to the final path.
+</section>
+
+<section data-markdown>
+### How it can look like
+
+```python
+class ProducerTask(luigi.Task):
+    def run(self):
+        tmp_path = self.output().path + '.tmp'
+        runcmd('/bin/spark MyTransformation '
+               '--input {} --output {}'.format(
+                   self.get_input_somehow(),
+                   tmp_path)
+        filesystem.move(tmp_path, self.output().path)
+```
+
+`tmp_path` can be either single file or a folder.
+
+</section>
+
+
+<section data-markdown>
+### The community's first solution:
+
+This has to be done for all task types. So this is what the community did.
+
+```bash
+$ ag luigi-tmp
+luigi/contrib/hadoop_jar.py
+49:                y = luigi.contrib.hdfs.HdfsTarget(x_path_no_slash + '-luigi-tmp-%09d' % random.randrange(0, 1e10))
+
+luigi/contrib/ftp.py
+169:            tmp_path = folder + os.sep + 'luigi-tmp-%09d' % random.randrange(0, 1e10)
+187:        tmp_local_path = local_path + '-luigi-tmp-%09d' % random.randrange(0, 1e10)
+261:            self.__tmp_path = self.path + '-luigi-tmp-%09d' % random.randrange(0, 1e10)
+
+(also luigi/contrib/ssh.py and luigi/file.py)
+```
+
+And maybe even places where we forgot.
+</section>
+
+<section data-markdown>
+## Downsides
+
+ * Every file format made their own implementation.
+ * And they take different parameters.
+</section>
+
+
+<section data-markdown>
+## So my "invention"
+
+```python
+class ProducerTask(luigi.Task):
+    def output(self):
+        return luigi.HdfsTarget('hdfs:///my/file.avro')
+
+    def run(self):
+        with self.output().temporary_path() as output_path:
+            runcmd('/bin/spark MyTransformation '
+                   '--input {} --output {}'.format(
+                       self.get_input_somehow(),
+                       output_path)
+```
+
+</section>
+
+<section data-markdown>
+## Does it work?
+
+ * I (at prev company) and others use it in production.
+ * It works for filsystems (local, gfs, hdfs, ssh, etc).
+ * The knowledge of moving files is encoded in the `FileSystem` interface rather
+   than folks maintaining `SparkTask`/`BigQueryTask`/etc.
+</section>
+
+<section data-markdown>
+## Part 3. How is it implemented?
+
+ * This is PyCon, so let's look at the implementation!
+ * I'll show my first attempt. Which was bad Python.
+</section>
+
+<section data-markdown>
+```python
+class FileSystemTarget(Target):
+  ...
+  def temporary_path(self):
+    class _Manager(object):
+      def __init__(self):
+        ...
+
+      def __enter__(self):
+        ...
+
+      def __exit__(self, exc_type, exc_value, traceback):
+        ...
+
+    return _Manager()
+```
+
+So `__enter__()` and `__exit__()` is what makes it a context manager (the `with` statement).
+It's from the the docs; [3.3.9. `With` Statement Context
+Managers](https://docs.python.org/3/reference/datamodel.html#with-statement-context-managers)
+
+</section>
+
+<section data-markdown>
+```python
+class _Manager(object):
+  def __init__(self):
+    num = random.randrange(0, 1e10)
+    slashless_path = self.target.path.rstrip('/')
+                                     .rstrip("\\")
+    self._temp_path = '{}-luigi-tmp-{:010}{}'.format(
+        slashless_path,
+        num,
+        self.target._trailing_slash())
+    tmp_dir = os.path.dirname(slashless_path)
+    if tmp_dir:
+        self.target.fs.mkdir(tmp_dir, parents=True,
+                             raise_if_exists=False)
+
+```
+</section>
+
+<section data-markdown>
+`__enter__` is easy. :)
+
+```python
+class _Manager(object):
+  def __enter__(self):
+      return self._temp_path
+```
+</section>
+
+<section data-markdown>
+```python
+class _Manager(object):
+  target = self
+
+  # This is the default signature for __exit__()
+  def __exit__(self, exc_type, exc_value, traceback):
+    if exc_type is None:
+        # There were no exceptions
+        self.target.fs.rename_dont_move(self._temp_path,
+                                        self.target.path)
+    return False  # means we don't suppress the exception
+```
+
+Here is the interesting part, because our behavior is opposite of most context
+mangers. We do an action when there are no exceptions.
+</section>
+
+<section data-markdown>
+refresher on `@contextmanager`
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def managed_resource(*args, **kwds):
+    # Code to acquire resource, e.g.:
+    resource = acquire_resource(*args, **kwds)
+    try:
+        yield resource
+    finally:
+        # Code to release resource, e.g.:
+        release_resource(resource)
+
+>>> with managed_resource(timeout=3600) as resource:
+...     # Resource is released at the end of this block ..
+```
+</section>
+
+<section data-markdown>
+### Can we use a `@contextmanager`?
+
+ * Yes we can. (next slide)
+ * Initially I could not "pattern match" what I wanted into the
+  @contextmanager. I din't see how it would support "do X if block didn't fail".
+</section>
+
+<section data-markdown>
+greatly simplified implementation.
+```python
+@contextmanager
+def temporary_path(self):
+    num = random.randrange(0, 1e10)
+    slashless_path = self.path.rstrip('/').rstrip("\\")
+    _temp_path = '{}-luigi-tmp-{:010}{}'.format(...)
+    tmp_dir = os.path.dirname(slashless_path)
+    if tmp_dir:
+        self.fs.mkdir(tmp_dir, parents=True,
+                      raise_if_exists=False)
+
+    yield _temp_path
+    # We won't reach here if there was an user exception.
+    self.fs.rename_dont_move(_temp_path, self.path)
+
+```
+</section>
+
+<section data-markdown>
+## What I learned
+
+ * implementation isn't a big deal. API is.
+ * unit tests your API not the internals.
+ * Do code reviews!!!
+ * contextmanagers aren't trivial. The library is good.
+</section>
+
+
+<section data-markdown>
+# Questions?
+</section>
+
+			</div>
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+			// More info about config & dependencies:
+			// - https://github.com/hakimel/reveal.js#configuration
+			// - https://github.com/hakimel/reveal.js#dependencies
+			Reveal.initialize({
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				],
+				history: true,
+				fragmentInURL: true
+			});
+		</script>
+	</body>
+</html>
