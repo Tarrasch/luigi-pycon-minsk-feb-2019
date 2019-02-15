@@ -85,8 +85,32 @@ Open sourced in 2012.
 				<section data-markdown>
 ## A dependency graph
 
-![Mario logo](img/dependency_graph.png)
+![Dependency graph](img/dependency_graph.png)
 				</section>
+
+
+<section>
+    <h2> Luigi does ETL well </h2>
+<img alt='Etl Pipeline' src="img/etl.svg" width=80%>
+</section>
+
+
+<section data-markdown>
+## Example pipeline
+ * Extract: `wget` some file from internet to storage
+ * Extract: dump table `X` from database to storage
+ * Transform: process using say Apache Spark 
+ * Transform: use legacy tool `Y` for refinement
+ * Load: Upload to database **Z**.
+
+Every bullet point is alike a
+
+```python
+class MyTask(luigi.Task): ...
+```
+
+Then we can serve webpages/music recommendations/whatever using **Z**.
+</section>
 
 				<section data-markdown>
 ## Task DSL
@@ -168,30 +192,6 @@ Did not run any tasks
 
 ===== Luigi Execution Summary =====
 ```
-</section>
-
-
-<section>
-    <h2> Luigi does ETL well </h2>
-<img alt='Etl Pipeline' src="img/etl.svg" width=80%>
-</section>
-
-
-<section data-markdown>
-## Example pipeline
- * Extract: `wget` some file from internet to storage
- * Extract: dump table `X` from database to storage
- * Transform: process using say Apache Spark 
- * Transform: use legacy tool `Y` for refinement
- * Load: Upload to database **Z**.
-
-Every bullet point is alike a
-
-```python
-class MyTask(luigi.Task): ...
-```
-
-Then we can serve webpages/music recommendations/whatever using **Z**.
 </section>
 
 
