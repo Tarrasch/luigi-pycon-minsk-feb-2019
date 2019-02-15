@@ -72,6 +72,20 @@ Open sourced in 2012.
 				</section>
 
 				<section data-markdown>
+## Description
+
+old description but still true.
+
+> Conceptually, Luigi is similar to GNU Make where you have certain
+> tasks and these tasks in turn may have dependencies on other tasks.
+> There are also some similarities to Oozie and Azkaban. One major
+> difference is that Luigi is not just built specifically for Hadoop,
+> and it’s easy to extend it with other kinds of tasks
+
+Nowadays Airflow is also in this space.
+				</section>
+
+				<section data-markdown>
 #### even has spinoffs: luiti, mario, sciluigi
 
 ![Luiti logo](img/luiti_rectangle_logo.png)
@@ -350,15 +364,13 @@ Thanks to the luigi scheduler, we make sure that we don't run things
 unneccessarily and it part of what gives us parallelism.
 </section>
 
-
 <section data-markdown>
 ![Scheduler screenshot](img/visualiser_front_page.png)
 </section>
 
 <section data-markdown>
 The scheduler lives in the same repo and is also written in Python, but it can
-be written in anything since it talks using the RPC.
-
+be rewritten in anything since it communicates only using RPCs.
 </section>
 
 
@@ -370,6 +382,26 @@ Main task of scheduler:
 
 </section>
 
+<section data-markdown>
+Which translates to this API
+
+  * `add_task(task_id, worker_id, status)`
+  * `get_work(worker_id)`
+</section>
+				<section>
+				  <section>
+<img data-src="img/150.gif" class="stretch">
+				  </section>
+				  <section>
+<img data-src="img/50.gif" class="stretch">
+				  </section>
+				  <section>
+<img data-src="img/15.gif" class="stretch">
+				  </section>
+				  <section>
+<img data-src="img/5.gif" class="stretch">
+				  </section>
+				</section>
 
 <section data-markdown>
 The scheduler also implements:
