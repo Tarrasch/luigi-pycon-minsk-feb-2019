@@ -74,15 +74,13 @@ Open sourced in 2012.
 				<section data-markdown>
 ## Description
 
-old description but still true.
-
 > Conceptually, Luigi is similar to GNU Make where you have certain
 > tasks and these tasks in turn may have dependencies on other tasks.
-> There are also some similarities to Oozie and Azkaban. One major
-> difference is that Luigi is not just built specifically for Hadoop,
-> and it’s easy to extend it with other kinds of tasks
+> Luigi is not built specifically for Hadoop
+> and it’s easy to extend it with other kinds of tasks.
+> However, these roots still influce its design today.
 
-Nowadays Airflow is also in this space.
+Airflow is also in this space.
 				</section>
 
 				<section data-markdown>
@@ -104,7 +102,7 @@ Nowadays Airflow is also in this space.
 
 
 <section>
-    <h2> Luigi does ETL well </h2>
+Luigi does ETL well
 <img alt='Etl Pipeline' src="img/etl.svg" width=80%>
 </section>
 
@@ -206,7 +204,7 @@ Hello World
 				</section>
 
 				<section data-markdown>
-And let's run it again!
+If we run luigi again, it won't run the task again.
 
 ```bash
 $ luigi --module helloworld HelloWorldTask --local-scheduler
@@ -324,8 +322,8 @@ class ParentTask(luigi.Task):
     def run(self):
         acc = 0
         for target in self.input():
-            with target.open() as f:
-                acc += int(f.read())
+            with target.open() as fd:
+                acc += int(fd.read())
 
         with self.output().open('w') as fd:
             fd.write(str(acc))
