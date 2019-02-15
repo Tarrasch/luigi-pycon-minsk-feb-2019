@@ -49,9 +49,9 @@ Saturday, February 16, 2019
 				<section data-markdown>
 ### This talk
 
- 1. Introduction to luigi
- 2. Creating folders - why it's not trivial
- 3. An interesting ContextManager that solves 2.
+ 1. Introduction / what luigi can be used for.
+ 2. Example code and running luigi.
+ 3. How you can parallelize with luigi.
 				</section>
 
 
@@ -97,19 +97,33 @@ Open sourced in 2012.
 
 <section data-markdown>
 ## Example pipeline
+
+A luigi Pipeline can be these steps:
+
  * Extract: `wget` some file from internet to storage
  * Extract: dump table `X` from database to storage
  * Transform: process using say Apache Spark 
  * Transform: use legacy tool `Y` for refinement
  * Load: Upload to database **Z**.
 
-Every bullet point is alike a
+Then we can serve webpages/music recommendations/whatever using **Z**. (that is outside luigi)
+</section>
+
+
+<section data-markdown>
+In the world of code it could be like:
+
+ * `WgetWeatherReportTask`
+ * `GetWeatherDataSnapshotTask`
+ * `FilterWeatherDataTask`
+ * `PreprocessWithLegacyToolTask`
+ * `IngestToDatabaseTask`
+
+In code, you write tasks like this:
 
 ```python
-class MyTask(luigi.Task): ...
+class WgetWeatherReportTask(luigi.Task): ...
 ```
-
-Then we can serve webpages/music recommendations/whatever using **Z**.
 </section>
 
 				<section data-markdown>
@@ -134,6 +148,10 @@ class MyTask(luigi.Task):
 				</section>
 
 				<section data-markdown>
+# Part 2. Running examples
+				</section>
+
+				<section data-markdown>
 ## Small example
 
 ```python
@@ -153,7 +171,7 @@ class HelloWorldTask(luigi.Task):
 				</section>
 
 				<section data-markdown>
-## Lets run it!
+Lets run it!
 
 ```bash
 $ luigi --module helloworld HelloWorldTask --local-scheduler
@@ -174,7 +192,7 @@ Hello World
 				</section>
 
 				<section data-markdown>
-## And let's run it again!
+And let's run it again!
 
 ```bash
 $ luigi --module helloworld HelloWorldTask --local-scheduler
@@ -194,6 +212,175 @@ Did not run any tasks
 ```
 </section>
 
+				<section data-markdown>
+## A more complicated example
+
+```python
+class ParentTask(luigi.Task):
+    ...
+
+class ChildTask(luigi.Task):
+    my_param = luigi.Parameter()
+
+    def run(self):
+        with self.output().open('w') as fd:
+            fd.write(str(eval(self.my_param)))
+            time.sleep(30)
+
+    def output(self):
+        return luigi.LocalTarget('/tmp/presentation/' +
+                                 self.my_param)
+
+```
+</section>
+
+
+				<section data-markdown>
+```python
+class ParentTask(luigi.Task):
+    def requires(self):
+        return [ChildTask(my_param='4+6'),
+	        ChildTask(my_param='len("Hello world")')]
+
+    def output(self):
+        return luigi.LocalTarget(
+            '/tmp/presentation/final_result')
+
+    ...
+
+```
+</section>
+
+				<section data-markdown>
+```python
+class ParentTask(luigi.Task):
+    ...
+    def run(self):
+        acc = 0
+        for f in self.input():
+            with f.open():
+                acc += int(f.read())
+
+        with self.output().open('w') as fd:
+            fd.write(str(acc))
+
+```
+</section>
+
+				<section data-markdown>
+On the scheduler this happens
+
+![Scheduler screenshot](img/sched1.png)
+</section>
+<section data-markdown>
+![Scheduler screenshot](img/sched2.png)
+</section>
+<section data-markdown>
+![Scheduler screenshot](img/sched3.png)
+</section>
+<section data-markdown>
+![Scheduler screenshot](img/sched4.png)
+</section>
+
+				<section data-markdown>
+It also failed on the client
+
+```bash
+$ PYTHONPATH=. ./bin/luigi --module hello ParentTask
+...
+===== Luigi Execution Summary =====
+
+Scheduled 3 tasks of which:
+* 2 ran successfully:
+    - 2 ChildTask(my_param=4+6,len("Hello world"))
+* 1 failed:
+    - 1 ParentTask()
+
+This progress looks :( because there were failed tasks
+
+===== Luigi Execution Summary =====
+```
+</section>
+
+				<section data-markdown>
+And let's fix the bug ...
+```python
+class ParentTask(luigi.Task):
+    ...
+    def run(self):
+        acc = 0
+        for target in self.input():
+            with target.open() as f:
+                acc += int(f.read())
+
+        with self.output().open('w') as fd:
+            fd.write(str(acc))
+
+```
+</section>
+
+				<section data-markdown>
+## Run it again
+```bash
+$ PYTHONPATH=. ./bin/luigi --module hello ParentTask
+...
+===== Luigi Execution Summary =====
+
+Scheduled 3 tasks of which:
+* 2 complete ones were encountered:
+    - 2 ChildTask(my_param=4+6,len("Hello world"))
+* 1 ran successfully:
+    - 1 ParentTask()
+
+This progress looks :) because there were no failed tasks or missing dependencies
+
+===== Luigi Execution Summary =====
+```
+
+```bash
+$ cat /tmp/presentation/final_result 
+21 
+```
+</section>
+
+<section data-markdown>
+# Part 3. The Scheduler
+
+Thanks to the luigi scheduler, we make sure that we don't run things
+unneccessarily and it part of what gives us parallelism.
+</section>
+
+
+<section data-markdown>
+![Scheduler screenshot](img/visualiser_front_page.png)
+</section>
+
+<section data-markdown>
+The scheduler lives in the same repo and is also written in Python, but it can
+be written in anything since it talks using the RPC.
+
+</section>
+
+
+<section data-markdown>
+Main task of scheduler:
+
+ * Register tasks from luigi clients (called Workers)
+ * Give out tasks to run when a Worker ask for it.
+
+</section>
+
+
+<section data-markdown>
+The scheduler also implements:
+
+ * Virtual resource limits
+ * Setting cooldown for failed tasks.
+ * Disabling often failing tasks.
+ * and much more.
+
+
+</section>
 
 <section data-markdown>
 # Questions?
